@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
@@ -49,6 +49,7 @@ type LineItem = {
 type CustomerOption = {
   id: number;
   ledgerName: string;
+  customerType?: "CUSTOMER" | "VENDOR";
   gstin?: string | null;
   city?: string | null;
   state?: string | null;
@@ -72,7 +73,6 @@ function NewChallan() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [customerId, setCustomerId] = useState(queryCustomerId);
   const [transporterId, setTransporterId] = useState("none");
-  const [status, setStatus] = useState<"STOCK_SENT" | "STOCK_RECEIVED" | "">("");
   const [deliveryType, setDeliveryType] = useState<DeliveryTypeValue | "">("");
   const [challanDate, setChallanDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [challanNumber, setChallanNumber] = useState("");
@@ -125,6 +125,7 @@ function NewChallan() {
   }, []);
 
   const selectedCustomer = customers.find((c) => String(c.id) === customerId);
+  const direction = selectedCustomer?.customerType === "VENDOR" ? "INWARD" : "OUTWARD";
 
   useEffect(() => {
     let cancelled = false;
@@ -159,8 +160,6 @@ function NewChallan() {
     companyState && supplyState ? normalizeState(companyState) !== supplyState : false;
 
   const hasSelectedCustomer = Boolean(customerId);
-
-  const selectedCompanyState = companyState;
 
   const taxableTotal = items.reduce((sum, item) => {
     const amount = item.amount
@@ -222,7 +221,7 @@ function NewChallan() {
       <PageHeader
         eyebrow="Operations · Vouchers"
         title="New Voucher"
-        description="Create a delivery voucher like VLJ jewellery voucher — party, despatch and goods."
+        description="Create a delivery voucher. Stock direction is determined automatically from the party type."
       />
 
       <form
@@ -247,10 +246,6 @@ function NewChallan() {
 
           if (!deliveryType) {
             setError("Select delivery type");
-            return;
-          }
-          if (!status) {
-            setError("Select status");
             return;
           }
 
@@ -284,7 +279,6 @@ function NewChallan() {
                 destination: form.get("destination")?.toString() || "",
                 termsOfDelivery: form.get("termsOfDelivery")?.toString() || "",
                 remarks: form.get("remarks")?.toString() || "",
-                status,
                 items: validItems.map((item) => {
                   const quantity = Number(item.quantity);
                   const rate = Number(item.rate);
@@ -309,7 +303,7 @@ function NewChallan() {
         }}
         className="space-y-6"
       >
-        <FormSection title="Voucher" description="Voucher number, date and stock movement status">
+        <FormSection title="Voucher" description="Voucher number, date and automatically determined stock direction">
           <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Voucher No" htmlFor="challanNo" required>
               <Input
@@ -347,19 +341,10 @@ function NewChallan() {
                 onChange={(e) => setChallanDate(e.target.value)}
               />
             </Field>
-            <Field label="Status" required>
-              <Select
-                value={status}
-                onValueChange={(value) => setStatus(value as "STOCK_SENT" | "STOCK_RECEIVED")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select status..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="STOCK_SENT">Stock Sent</SelectItem>
-                  <SelectItem value="STOCK_RECEIVED">Stock Received</SelectItem>
-                </SelectContent>
-              </Select>
+            <Field label="Stock Direction">
+              <div className="flex h-10 items-center rounded-md border border-border bg-muted/40 px-3 text-sm font-medium">
+                {customerId ? (direction === "INWARD" ? "INWARD · Stock Received" : "OUTWARD · Stock Sent") : "Select party first"}
+              </div>
             </Field>
           </div>
         </FormSection>
@@ -369,7 +354,7 @@ function NewChallan() {
           description="Ship to & Bill to — pick from Customers master"
         >
           <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
-            <Field label="Customer" required className="md:col-span-2">
+            <Field label="Customer / Party" required className="md:col-span-2">
               <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select customer..." />
@@ -377,7 +362,7 @@ function NewChallan() {
                 <SelectContent>
                   {customers.map((customer) => (
                     <SelectItem key={customer.id} value={String(customer.id)}>
-                      {customer.ledgerName}
+                      {customer.ledgerName} ({customer.customerType === "VENDOR" ? "Vendor" : "Customer"})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -392,6 +377,9 @@ function NewChallan() {
                     "—"}
                 </p>
                 <p>GSTIN: {selectedCustomer.gstin || "—"}</p>
+                <p className="mt-1 font-medium text-foreground">
+                  Party Type: {selectedCustomer.customerType === "VENDOR" ? "Vendor" : "Customer"} · Movement: {direction}
+                </p>
               </div>
             ) : null}
             <Field label="Place of Supply" htmlFor="placeOfSupply">
