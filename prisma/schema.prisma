@@ -1,6 +1,6 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
   moduleFormat = "esm"
 }
 
@@ -112,6 +112,11 @@ model DeliveryChallan {
   remarks         String?
   status          ChallanStatus         @default(STOCK_SENT)
   direction       MovementDirection     @default(OUTWARD)
+  movementReason  MovementReason        @default(ORIGINAL)
+  againstVoucherNo String?
+  invoiceNo       String?
+  noteType        NoteType?
+  noteNo          String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
   placeOfSupply   String?
@@ -197,6 +202,18 @@ enum MovementDirection {
   @@map("movement_direction")
 }
 
+enum MovementReason {
+  ORIGINAL
+  RETURN
+  REPLACEMENT
+  OTHER
+}
+
+enum NoteType {
+  CREDIT
+  DEBIT
+}
+
 enum DeliveryType {
   APPROVAL
   JOB_WORK
@@ -248,7 +265,7 @@ model LogisticsSummaryItem {
   customer              Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([summaryId], map: "logistics_summary_items_summaryId_fkey")
-  @@index([customerId], map: "logistics_summary_items_customerId_fkey")
+  @@index([customerId], map: "logistics_summary_items_customerId_idx")
   @@map("logistics_summary_items")
 }
 
