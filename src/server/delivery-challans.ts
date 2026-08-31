@@ -1,7 +1,7 @@
 import { Prisma } from "@/generated/prisma/client.ts";
 import { prisma } from "@/lib/prisma";
 import { isDeliveryType, type DeliveryTypeValue } from "@/lib/challan-number";
-import { recordStockMovement } from "@/server/inventory";
+import { recordStockMovementInTransaction } from "@/server/inventory";
 
 export type ChallanStatusValue = "STOCK_SENT" | "STOCK_RECEIVED";
 export type { DeliveryTypeValue };
@@ -15,30 +15,16 @@ const optionalText = (value: unknown) => {
 const toDecimal = (value: number | string) => new Prisma.Decimal(value);
 
 const serializeValue = (value: unknown): unknown => {
-  if (value == null) return value;
-  if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
-    return value;
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(serializeValue);
-  }
+  if (value == null || typeof value === "number" || typeof value === "string" || typeof value === "boolean") return value;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(serializeValue);
   if (typeof value === "object") {
     const anyValue = value as Record<string, unknown>;
-    if (
-      "toNumber" in anyValue &&
-      typeof (anyValue as { toNumber?: () => number }).toNumber === "function"
-    ) {
+    if ("toNumber" in anyValue && typeof (anyValue as { toNumber?: () => number }).toNumber === "function") {
       return (anyValue as { toNumber: () => number }).toNumber();
     }
-
-    return Object.fromEntries(
-      Object.entries(anyValue).map(([key, nested]) => [key, serializeValue(nested)]),
-    );
+    return Object.fromEntries(Object.entries(anyValue).map(([key, nested]) => [key, serializeValue(nested)]));
   }
-
   return value;
 };
 
@@ -59,6 +45,9 @@ const normalizeChallanItemInput = (data: {
   const rate = Number(data.rate ?? 0);
   const amount = Number((Number(data.amount ?? quantity * rate)).toFixed(2));
   const gstRate = Number(data.gstRate ?? 3);
+
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Item quantity must be greater than zero");
+  if (!Number.isFinite(rate) || rate < 0) throw new Error("Item rate is invalid");
 
   return {
     stockItemId: Number(data.stockItemId),
@@ -93,9 +82,7 @@ export type ChallanInput = {
 const normalizeChallanInput = (data: ChallanInput) => ({
   challanNumber: data.challanNumber?.trim() || undefined,
   challanDate: data.challanDate ? new Date(data.challanDate) : new Date(),
-  deliveryType: isDeliveryType(data.deliveryType)
-    ? data.deliveryType
-    : ("APPROVAL" as DeliveryTypeValue),
+  deliveryType: isDeliveryType(data.deliveryType) ? data.deliveryType : ("APPROVAL" as DeliveryTypeValue),
   roundoff: toDecimal(Number(data.roundoff ?? 0)),
   customerId: Number(data.customerId ?? 0),
   transporterId: data.transporterId ? Number(data.transporterId) : null,
@@ -115,11 +102,7 @@ const normalizeChallanInput = (data: ChallanInput) => ({
 const challanInclude = {
   customer: true,
   transporter: true,
-  items: {
-    include: {
-      stockItem: true,
-    },
-  },
+  items: { include: { stockItem: true } },
 } as const;
 
 export async function listDeliveryChallans({
@@ -142,11 +125,8 @@ export async function listDeliveryChallans({
   const take = Math.min(Math.max(pageSize, 1), 500);
   const skip = (Math.max(page, 1) - 1) * take;
   const searchTerm = search?.trim();
-
   const challanDate: { gte?: Date; lte?: Date } = {};
-  if (fromDate) {
-    challanDate.gte = new Date(fromDate);
-  }
+  if (fromDate) challanDate.gte = new Date(fromDate);
   if (toDate) {
     const end = new Date(toDate);
     end.setHours(23, 59, 59, 999);
@@ -157,39 +137,19 @@ export async function listDeliveryChallans({
     ...(status !== "ALL" ? { status } : {}),
     ...(deliveryType !== "ALL" ? { deliveryType } : {}),
     ...(fromDate || toDate ? { challanDate } : {}),
-    ...(searchTerm
-      ? {
-          customer: { ledgerName: { contains: searchTerm } },
-        }
-      : {}),
+    ...(searchTerm ? { customer: { ledgerName: { contains: searchTerm } } } : {}),
   };
 
   const [rows, total] = await Promise.all([
-    prisma.deliveryChallan.findMany({
-      where,
-      orderBy: { challanDate: "desc" },
-      skip,
-      take,
-      include: challanInclude,
-    }),
+    prisma.deliveryChallan.findMany({ where, orderBy: { challanDate: "desc" }, skip, take, include: challanInclude }),
     prisma.deliveryChallan.count({ where }),
   ]);
 
-  return {
-    rows: rows.map((row) => serializeChallan(row)),
-    total,
-    page,
-    pageSize: take,
-    totalPages: Math.max(1, Math.ceil(total / take)),
-  };
+  return { rows: rows.map(serializeChallan), total, page, pageSize: take, totalPages: Math.max(1, Math.ceil(total / take)) };
 }
 
 export async function getDeliveryChallan(id: number) {
-  const row = await prisma.deliveryChallan.findUnique({
-    where: { id },
-    include: challanInclude,
-  });
-
+  const row = await prisma.deliveryChallan.findUnique({ where: { id }, include: challanInclude });
   return serializeChallan(row);
 }
 
@@ -209,53 +169,42 @@ export async function createDeliveryChallan(
 
   return prisma.$transaction(async (tx) => {
     const challanNumber = normalized.challanNumber?.trim();
+    if (!challanNumber) throw new Error("Voucher number is required");
+    if (!normalized.customerId) throw new Error("Customer is required");
+    if (!data.items.length) throw new Error("At least one item is required");
 
-    if (!challanNumber) {
-      throw new Error("Voucher number is required");
-    }
+    const customer = await tx.customer.findUnique({ where: { id: normalized.customerId } });
+    if (!customer) throw new Error("Customer not found");
 
-    // Get customer to determine direction
-    const customer = await tx.customer.findUnique({
-      where: { id: normalized.customerId },
-    });
-
-    if (!customer) {
-      throw new Error("Customer not found");
-    }
-
-    // Determine direction based on customer type
-    // CUSTOMER = we send to them (OUTWARD)
-    // VENDOR = they send to us (INWARD)
     const direction = customer.customerType === "VENDOR" ? "INWARD" : "OUTWARD";
     const transactionType = direction === "INWARD" ? "RECEIVE" : "SEND";
+    const status = direction === "INWARD" ? "STOCK_RECEIVED" : "STOCK_SENT";
 
     const challan = await tx.deliveryChallan.create({
       data: {
         ...normalized,
         challanNumber,
         direction,
-        items: {
-          create: data.items.map((item) => normalizeChallanItemInput(item)),
-        },
+        status,
+        items: { create: data.items.map(normalizeChallanItemInput) },
       },
       include: challanInclude,
     });
 
-    // Record inventory movements immediately based on direction
     for (const item of data.items) {
-      await recordStockMovement({
-        productId: item.stockItemId,
+      await recordStockMovementInTransaction(tx, {
+        productId: Number(item.stockItemId),
         customerId: challan.customerId,
         challanId: challan.id,
         challanNumber: challan.challanNumber,
-        transactionType: transactionType as "SEND" | "RECEIVE",
+        transactionType,
         quantity: new Prisma.Decimal(item.quantity),
         remarks: item.remarks || challan.remarks || null,
       });
     }
 
     return serializeChallan(challan);
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function updateDeliveryChallan(
@@ -274,31 +223,42 @@ export async function updateDeliveryChallan(
   const normalized = normalizeChallanInput(data);
 
   return prisma.$transaction(async (tx) => {
-    // Get the original challan
-    const original = await tx.deliveryChallan.findUnique({
-      where: { id },
-      include: challanInclude,
-    });
+    const original = await tx.deliveryChallan.findUnique({ where: { id }, include: { items: true } });
+    if (!original) throw new Error("Challan not found");
 
-    if (!original) {
-      throw new Error("Challan not found");
+    if (data.customerId !== undefined && Number(data.customerId) !== original.customerId) {
+      throw new Error("Customer cannot be changed after the challan has posted stock. Create a reversal/new challan instead.");
     }
 
-    // Update the challan
-    // Note: Inventory was already recorded at creation, so updates don't affect inventory
+    if (data.items) {
+      const incoming = data.items.map(normalizeChallanItemInput);
+      const sameItems = incoming.length === original.items.length && incoming.every((item, index) => {
+        const old = original.items[index];
+        return item.stockItemId === old.stockItemId && item.quantity.equals(old.quantity);
+      });
+      if (!sameItems) {
+        throw new Error("Stock items or quantities cannot be changed after the challan has posted stock. Create a reversal/new challan instead.");
+      }
+    }
+
     const updated = await tx.deliveryChallan.update({
       where: { id },
       data: {
-        ...normalized,
         challanNumber: normalized.challanNumber || undefined,
-        // Don't change direction - it was set at creation based on customer type
-        direction: original.direction,
-        items: data.items
-          ? {
-              deleteMany: {},
-              create: data.items.map((item) => normalizeChallanItemInput(item)),
-            }
-          : undefined,
+        challanDate: normalized.challanDate,
+        deliveryType: normalized.deliveryType,
+        roundoff: normalized.roundoff,
+        transporterId: normalized.transporterId,
+        placeOfSupply: normalized.placeOfSupply,
+        referenceNo: normalized.referenceNo,
+        referenceDate: normalized.referenceDate,
+        buyerOrderNo: normalized.buyerOrderNo,
+        dispatchDocNo: normalized.dispatchDocNo,
+        modeOfPayment: normalized.modeOfPayment,
+        otherReferences: normalized.otherReferences,
+        destination: normalized.destination,
+        termsOfDelivery: normalized.termsOfDelivery,
+        remarks: normalized.remarks,
       },
       include: challanInclude,
     });
@@ -309,58 +269,54 @@ export async function updateDeliveryChallan(
 
 export async function deleteDeliveryChallan(id: number) {
   return prisma.$transaction(async (tx) => {
-    // Get the challan to check what movements need to be reversed
     const challan = await tx.deliveryChallan.findUnique({
       where: { id },
-      include: {
-        items: true,
-        stockLedgers: true,
-      },
+      include: { items: true, stockLedgers: true },
     });
+    if (!challan) throw new Error("Challan not found");
 
-    if (!challan) {
-      throw new Error("Challan not found");
-    }
+    const affectedProducts = [...new Set(challan.items.map((item) => item.stockItemId))];
+    const affectedCustomer = challan.customerId;
 
-    // Delete the challan (cascade will delete associated stock ledger entries and items)
-    const deleted = await tx.deliveryChallan.delete({
-      where: { id },
-    });
+    await tx.deliveryChallan.delete({ where: { id } });
 
-    // Recalculate product inventory balances for affected products
-    // Get unique product IDs from deleted challan
-    const productIds = [...new Set(challan.items.map((item) => item.stockItemId))];
-
-    for (const productId of productIds) {
-      // Get all remaining stock ledger entries for this product
+    for (const productId of affectedProducts) {
       const entries = await tx.stockLedger.findMany({
         where: { productId },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
 
-      // Recalculate running balance from scratch
-      let runningBalance = new Decimal(0);
+      let runningBalance = new Prisma.Decimal(0);
       for (const entry of entries) {
-        if (entry.transactionType === "SEND") {
-          runningBalance = runningBalance.minus(entry.quantity);
-        } else {
-          runningBalance = runningBalance.plus(entry.quantity);
-        }
-
-        // Update the running balance in the ledger
-        await tx.stockLedger.update({
-          where: { id: entry.id },
-          data: { runningBalance },
-        });
+        runningBalance = entry.transactionType === "SEND"
+          ? runningBalance.minus(entry.quantity)
+          : runningBalance.plus(entry.quantity);
+        await tx.stockLedger.update({ where: { id: entry.id }, data: { runningBalance } });
       }
 
-      // Update product inventory with the final balance
-      await tx.productInventory.update({
+      await tx.productInventory.upsert({
         where: { productId },
-        data: { totalQtyInHand: runningBalance },
+        create: { productId, companyId: 1, totalQtyInHand: runningBalance },
+        update: { totalQtyInHand: runningBalance },
       });
     }
 
-    return deleted;
+    const customerProductPairs = [...new Set(challan.stockLedgers.map((entry) => `${entry.customerId}:${entry.productId}`))];
+    for (const pair of customerProductPairs) {
+      const [customerId, productId] = pair.split(":").map(Number);
+      const entries = await tx.stockLedger.findMany({ where: { customerId, productId } });
+      let balance = new Prisma.Decimal(0);
+      for (const entry of entries) {
+        balance = entry.transactionType === "SEND" ? balance.plus(entry.quantity) : balance.minus(entry.quantity);
+      }
+      await tx.customerProductStock.upsert({
+        where: { companyId_customerId_productId: { companyId: 1, customerId, productId } },
+        create: { companyId: 1, customerId, productId, qtyWithCustomer: balance },
+        update: { qtyWithCustomer: balance },
+      });
+    }
+
+    void affectedCustomer;
+    return challan;
   });
 }
