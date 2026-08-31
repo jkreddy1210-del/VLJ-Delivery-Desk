@@ -22,6 +22,15 @@ export const DELIVERY_TYPES = [
 
 export type DeliveryTypeValue = (typeof DELIVERY_TYPES)[number]["value"];
 
+export const MOVEMENT_REASONS = [
+  { value: "ORIGINAL", label: "Original movement" },
+  { value: "RETURN", label: "Return" },
+  { value: "REPLACEMENT", label: "Replacement" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+export type MovementReasonValue = (typeof MOVEMENT_REASONS)[number]["value"];
+
 export function isDeliveryType(value: unknown): value is DeliveryTypeValue {
   return DELIVERY_TYPES.some((type) => type.value === value);
 }
