@@ -67,6 +67,52 @@ const normalizeCustomerInput = (data: {
   customerType: data.customerType ?? "CUSTOMER",
 });
 
+const normalizeCustomerUpdate = (data: {
+  ledgerName?: string;
+  contactPerson?: string;
+  mobile?: string;
+  phone?: string;
+  email?: string;
+  gstin?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  district?: string;
+  state?: string;
+  pinCode?: string;
+  country?: string;
+  status?: "ACTIVE" | "INACTIVE";
+  customerType?: CustomerTypeValue;
+}) => {
+  const update: Record<string, unknown> = {};
+  const textFields = [
+    "ledgerName",
+    "contactPerson",
+    "mobile",
+    "phone",
+    "email",
+    "gstin",
+    "addressLine1",
+    "addressLine2",
+    "city",
+    "district",
+    "state",
+    "pinCode",
+    "country",
+  ] as const;
+
+  for (const field of textFields) {
+    if (data[field] !== undefined) {
+      update[field] = field === "ledgerName" ? data[field]?.trim() ?? "" : optionalText(data[field]);
+    }
+  }
+
+  if (data.status !== undefined) update.status = data.status;
+  if (data.customerType !== undefined) update.customerType = data.customerType;
+
+  return update;
+};
+
 export async function listCustomers({
   search,
   status = "ACTIVE",
@@ -163,7 +209,7 @@ export async function updateCustomer(
 ) {
   const updated = await prisma.customer.update({
     where: { id },
-    data: normalizeCustomerInput(data),
+    data: normalizeCustomerUpdate(data),
   });
   return serializeCustomer(updated as unknown as Record<string, unknown>)!;
 }
