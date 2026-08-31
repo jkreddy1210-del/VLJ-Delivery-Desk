@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { serializeDate } from "@/lib/serialize";
 
+export type CustomerTypeValue = "CUSTOMER" | "VENDOR";
+
 const serializeCustomer = (customer: Record<string, unknown> | null) => {
   if (!customer) return null;
   return {
@@ -19,6 +21,7 @@ const serializeCustomer = (customer: Record<string, unknown> | null) => {
     pinCode: (customer.pinCode as string | null | undefined) ?? null,
     country: (customer.country as string | null | undefined) ?? null,
     status: customer.status as "ACTIVE" | "INACTIVE",
+    customerType: (customer.customerType as CustomerTypeValue | undefined) ?? "CUSTOMER",
     createdAt: serializeDate(customer.createdAt),
     updatedAt: serializeDate(customer.updatedAt),
   };
@@ -45,6 +48,7 @@ const normalizeCustomerInput = (data: {
   pinCode?: string;
   country?: string;
   status?: "ACTIVE" | "INACTIVE";
+  customerType?: CustomerTypeValue;
 }) => ({
   ledgerName: data.ledgerName?.trim() ?? "",
   contactPerson: optionalText(data.contactPerson),
@@ -60,6 +64,7 @@ const normalizeCustomerInput = (data: {
   pinCode: optionalText(data.pinCode),
   country: optionalText(data.country),
   status: data.status ?? "ACTIVE",
+  customerType: data.customerType ?? "CUSTOMER",
 });
 
 export async function listCustomers({
@@ -76,49 +81,17 @@ export async function listCustomers({
   const take = Math.min(Math.max(pageSize, 1), 500);
   const skip = (Math.max(page, 1) - 1) * take;
   const where = {
-    ...(status !== "ALL"
-      ? {
-          status,
-        }
-      : {}),
+    ...(status !== "ALL" ? { status } : {}),
     ...(search?.trim()
       ? {
           OR: [
-            {
-              ledgerName: {
-                contains: search.trim(),
-              },
-            },
-            {
-              contactPerson: {
-                contains: search.trim(),
-              },
-            },
-            {
-              mobile: {
-                contains: search.trim(),
-              },
-            },
-            {
-              email: {
-                contains: search.trim(),
-              },
-            },
-            {
-              gstin: {
-                contains: search.trim(),
-              },
-            },
-            {
-              city: {
-                contains: search.trim(),
-              },
-            },
-            {
-              state: {
-                contains: search.trim(),
-              },
-            },
+            { ledgerName: { contains: search.trim() } },
+            { contactPerson: { contains: search.trim() } },
+            { mobile: { contains: search.trim() } },
+            { email: { contains: search.trim() } },
+            { gstin: { contains: search.trim() } },
+            { city: { contains: search.trim() } },
+            { state: { contains: search.trim() } },
           ],
         }
       : {}),
@@ -143,11 +116,7 @@ export async function listCustomers({
 }
 
 export async function getCustomer(id: number) {
-  const customer = await prisma.customer.findUnique({
-    where: {
-      id,
-    },
-  });
+  const customer = await prisma.customer.findUnique({ where: { id } });
   return serializeCustomer(customer as unknown as Record<string, unknown> | null);
 }
 
@@ -166,10 +135,9 @@ export async function createCustomer(data: {
   pinCode?: string;
   country?: string;
   status?: "ACTIVE" | "INACTIVE";
+  customerType?: CustomerTypeValue;
 }) {
-  const created = await prisma.customer.create({
-    data: normalizeCustomerInput(data),
-  });
+  const created = await prisma.customer.create({ data: normalizeCustomerInput(data) });
   return serializeCustomer(created as unknown as Record<string, unknown>)!;
 }
 
@@ -190,6 +158,7 @@ export async function updateCustomer(
     pinCode?: string;
     country?: string;
     status?: "ACTIVE" | "INACTIVE";
+    customerType?: CustomerTypeValue;
   },
 ) {
   const updated = await prisma.customer.update({
@@ -201,39 +170,28 @@ export async function updateCustomer(
 
 export async function deleteCustomer(id: number) {
   const updated = await prisma.customer.update({
-    where: {
-      id,
-    },
-    data: {
-      status: "INACTIVE",
-    },
+    where: { id },
+    data: { status: "INACTIVE" },
   });
   return serializeCustomer(updated as unknown as Record<string, unknown>)!;
 }
+
 export async function restoreCustomer(id: number) {
   const updated = await prisma.customer.update({
     where: { id },
-    data: {
-      status: "ACTIVE",
-    },
+    data: { status: "ACTIVE" },
   });
   return serializeCustomer(updated as unknown as Record<string, unknown>)!;
 }
+
 export async function deleteCustomerForever(id: number) {
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-  });
+  const customer = await prisma.customer.findUnique({ where: { id } });
 
-  if (!customer) {
-    throw new Error("Customer not found.");
-  }
-
+  if (!customer) throw new Error("Customer not found.");
   if (customer.status !== "INACTIVE") {
     throw new Error("Only inactive customers can be permanently deleted.");
   }
 
-  const deleted = await prisma.customer.delete({
-    where: { id },
-  });
+  const deleted = await prisma.customer.delete({ where: { id } });
   return serializeCustomer(deleted as unknown as Record<string, unknown>)!;
 }
