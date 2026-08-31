@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Users, Plus, Download, Pencil, Trash2, Search } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataPanel, DataTable } from "@/components/EmptyTable";
@@ -24,7 +24,6 @@ export const Route = createFileRoute("/customers/")({
 
 function CustomersPage() {
   const [search, setSearch] = useState("");
-  const router = useRouter();
   const [status, setStatus] = useState<"ACTIVE" | "INACTIVE" | "ALL">("ACTIVE");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<Array<{
@@ -46,23 +45,17 @@ function CustomersPage() {
       setLoading(true);
       try {
         const result = await listCustomersFn({ data: { search, status, page, pageSize } });
-        if (!cancelled) {
-          setRows(result.rows);
-          setTotal(result.total);
-        }
+        if (!cancelled) { setRows(result.rows); setTotal(result.total); }
       } catch (error) {
         if (!cancelled) {
-          setRows([]);
-          setTotal(0);
+          setRows([]); setTotal(0);
           toast.error(error instanceof Error ? error.message : "Failed to load customers.");
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
-    load().catch(() => {
-      if (!cancelled) setLoading(false);
-    });
+    load().catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [search, status, page]);
 
@@ -84,9 +77,7 @@ function CustomersPage() {
       setRows((prev) => prev.filter((customer) => customer.id !== id));
       toast.success("Party permanently deleted.");
       const result = await listCustomersFn({ data: { search, status, page: 1, pageSize } });
-      setRows(result.rows);
-      setTotal(result.total);
-      setPage(1);
+      setRows(result.rows); setTotal(result.total); setPage(1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to permanently delete party.");
     }
@@ -108,12 +99,7 @@ function CustomersPage() {
         eyebrow="Masters"
         title="Customers & Vendors"
         description="Party ledgers used across vouchers, approvals and stock reports."
-        action={
-          <>
-            <Button variant="outline"><Download size={16} />Export</Button>
-            <Button asChild><Link to="/customers/new"><Plus size={16} />Add Party</Link></Button>
-          </>
-        }
+        action={<><Button variant="outline"><Download size={16} />Export</Button><Button asChild><Link to="/customers/new"><Plus size={16} />Add Party</Link></Button></>}
       />
 
       <DataPanel title="All Parties" caption={`${total} record${total === 1 ? "" : "s"}`}>
@@ -125,11 +111,7 @@ function CustomersPage() {
             </div>
             <Select value={status} onValueChange={(value) => { setStatus(value as "ACTIVE" | "INACTIVE" | "ALL"); setPage(1); }}>
               <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACTIVE">Active</SelectItem>
-                <SelectItem value="INACTIVE">Inactive</SelectItem>
-                <SelectItem value="ALL">All</SelectItem>
-              </SelectContent>
+              <SelectContent><SelectItem value="ACTIVE">Active</SelectItem><SelectItem value="INACTIVE">Inactive</SelectItem><SelectItem value="ALL">All</SelectItem></SelectContent>
             </Select>
           </div>
         </div>
@@ -143,44 +125,20 @@ function CustomersPage() {
             rows.map((customer) => (
               <tr key={customer.id} className="border-b border-border last:border-0">
                 <td className="px-5 py-3 font-medium text-foreground">{customer.ledgerName}</td>
-                <td className="px-5 py-3">
-                  <span className="rounded-full border border-border px-2 py-1 text-xs font-medium">
-                    {customer.customerType === "VENDOR" ? "Vendor · INWARD" : "Customer · OUTWARD"}
-                  </span>
-                </td>
+                <td className="px-5 py-3"><span className="rounded-full border border-border px-2 py-1 text-xs font-medium">{customer.customerType === "VENDOR" ? "Vendor · INWARD" : "Customer · OUTWARD"}</span></td>
                 <td className="px-5 py-3 text-muted-foreground">{customer.gstin ?? "—"}</td>
                 <td className="px-5 py-3 text-muted-foreground">{customer.city ?? "—"}</td>
                 <td className="px-5 py-3 text-muted-foreground">{customer.state ?? "—"}</td>
-                <td className="px-5 py-3">
-                  {customer.status === "ACTIVE" ? <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Active</span> : <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">Inactive</span>}
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    {customer.status === "ACTIVE" ? (
-                      <>
-                        <Button asChild variant="outline" size="sm"><Link to="/customers/edit/$id" params={{ id: customer.id.toString() }}><Pencil size={14} />Edit</Link></Button>
-                        <ConfirmDialog trigger={<Button variant="ghost" size="sm"><Trash2 size={14} />Delete</Button>} title="Move Party to Recycle Bin" description={`Are you sure you want to move "${customer.ledgerName}" to the Recycle Bin? You can restore it later.`} confirmText="Move to Recycle Bin" onConfirm={() => handleDelete(customer.id)} />
-                      </>
-                    ) : (
-                      <>
-                        <ConfirmDialog trigger={<Button variant="outline" size="sm">Restore</Button>} title="Restore Party" description={`Are you sure you want to restore "${customer.ledgerName}"?`} confirmText="Restore" onConfirm={() => handleRestore(customer.id)} />
-                        <ConfirmDialog trigger={<Button variant="destructive" size="sm">Delete Forever</Button>} title="Delete Party Permanently" description={`"${customer.ledgerName}" will be permanently deleted. This action cannot be undone.`} confirmText="Delete Forever" onConfirm={() => handleDeleteForever(customer.id)} />
-                      </>
-                    )}
-                  </div>
-                </td>
+                <td className="px-5 py-3">{customer.status === "ACTIVE" ? <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Active</span> : <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">Inactive</span>}</td>
+                <td className="px-5 py-3"><div className="flex items-center gap-2">
+                  {customer.status === "ACTIVE" ? <><Button asChild variant="outline" size="sm"><Link to="/customers/edit/$id" params={{ id: customer.id.toString() }}><Pencil size={14} />Edit</Link></Button><ConfirmDialog trigger={<Button variant="ghost" size="sm"><Trash2 size={14} />Delete</Button>} title="Move Party to Recycle Bin" description={`Are you sure you want to move "${customer.ledgerName}" to the Recycle Bin? You can restore it later.`} confirmText="Move to Recycle Bin" onConfirm={() => handleDelete(customer.id)} /></> : <><ConfirmDialog trigger={<Button variant="outline" size="sm">Restore</Button>} title="Restore Party" description={`Are you sure you want to restore "${customer.ledgerName}"?`} confirmText="Restore" onConfirm={() => handleRestore(customer.id)} /><ConfirmDialog trigger={<Button variant="destructive" size="sm">Delete Forever</Button>} title="Delete Party Permanently" description={`"${customer.ledgerName}" will be permanently deleted. This action cannot be undone.`} confirmText="Delete Forever" onConfirm={() => handleDeleteForever(customer.id)} /></>}
+                </div></td>
               </tr>
             ))
           )}
         </DataTable>
 
-        <div className="flex items-center justify-between px-5 py-3 text-sm text-muted-foreground">
-          <span>Page {page} of {totalPages}</span>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button>
-          </div>
-        </div>
+        <div className="flex items-center justify-between px-5 py-3 text-sm text-muted-foreground"><span>Page {page} of {totalPages}</span><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button></div></div>
       </DataPanel>
     </>
   );
