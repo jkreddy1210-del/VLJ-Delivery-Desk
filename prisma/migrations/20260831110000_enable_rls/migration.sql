@@ -1,0 +1,13 @@
+ALTER TABLE public.company_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stockgroup ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transporters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logistics_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.delivery_challans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.delivery_challan_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logistics_summary_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logistics_summary_agg ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_ledgers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_inventories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_product_stocks ENABLE ROW LEVEL SECURITY;
