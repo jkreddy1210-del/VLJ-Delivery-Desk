@@ -31,39 +31,29 @@ const customerSchema = z.object({
   pinCode: optionalText,
   country: optionalText,
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  customerType: z.enum(["CUSTOMER", "VENDOR"]).optional(),
 });
 
 const customerListSchema = z.object({
   search: z.string().optional(),
-
   status: z.enum(["ACTIVE", "INACTIVE", "ALL"]).default("ACTIVE"),
-
   page: z.coerce.number().int().min(1).default(1),
-
   pageSize: z.coerce.number().int().min(1).max(500).default(10),
 });
 
-const customerIdSchema = z.object({
-  id: z.coerce.number().int().positive(),
-});
+const customerIdSchema = z.object({ id: z.coerce.number().int().positive() });
 
 export const listCustomersFn = createServerFn({ method: "POST" })
   .validator(customerListSchema)
-  .handler(async ({ data }) => {
-    return await listCustomers(data);
-  });
+  .handler(async ({ data }) => await listCustomers(data));
 
 export const getCustomerFn = createServerFn({ method: "POST" })
   .validator(customerIdSchema)
-  .handler(async ({ data }) => {
-    return await getCustomer(data.id);
-  });
+  .handler(async ({ data }) => await getCustomer(data.id));
 
 export const createCustomerFn = createServerFn({ method: "POST" })
   .validator(customerSchema)
-  .handler(async ({ data }) => {
-    return await createCustomer(data);
-  });
+  .handler(async ({ data }) => await createCustomer(data));
 
 export const updateCustomerFn = createServerFn({ method: "POST" })
   .validator(
@@ -72,43 +62,19 @@ export const updateCustomerFn = createServerFn({ method: "POST" })
       data: customerSchema.partial(),
     }),
   )
-  .handler(async ({ data }) => {
-    return await updateCustomer(data.id, data.data);
-  });
+  .handler(async ({ data }) => await updateCustomer(data.id, data.data));
 
 export const deleteCustomerFn = createServerFn({ method: "POST" })
-  .validator(
-    z.object({
-      id: z.number(),
-    }),
-  )
+  .validator(z.object({ id: z.number() }))
   .handler(async ({ data }) => {
     await deleteCustomer(data.id);
-
-    return {
-      success: true,
-    };
+    return { success: true };
   });
 
-export const deleteCustomerForeverFn = createServerFn({
-  method: "POST",
-})
-  .validator(
-    z.object({
-      id: z.number(),
-    }),
-  )
-  .handler(async ({ data }) => {
-    return await deleteCustomerForever(data.id);
-  });
-export const restoreCustomerFn = createServerFn({
-  method: "POST",
-})
-  .validator(
-    z.object({
-      id: z.number(),
-    }),
-  )
-  .handler(async ({ data }) => {
-    return await restoreCustomer(data.id);
-  });
+export const deleteCustomerForeverFn = createServerFn({ method: "POST" })
+  .validator(z.object({ id: z.number() }))
+  .handler(async ({ data }) => await deleteCustomerForever(data.id));
+
+export const restoreCustomerFn = createServerFn({ method: "POST" })
+  .validator(z.object({ id: z.number() }))
+  .handler(async ({ data }) => await restoreCustomer(data.id));
