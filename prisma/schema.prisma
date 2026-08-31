@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
 model CompanySettings {
@@ -25,7 +25,7 @@ model CompanySettings {
   updatedAt              DateTime @updatedAt
   challanPrefix          String?  @default("VLJ") @db.VarChar(50)
   challanNextNo          Int      @default(1)
-  challanSuffix          String?  @default("A") @db.VarChar(20)
+  challanSuffix           String?  @default("A") @db.VarChar(20)
   challanSuffixApproval  String?  @default("A") @db.VarChar(20)
   challanNextNoApproval  Int      @default(1)
   challanSuffixJobWork   String?  @default("JB") @db.VarChar(20)
@@ -33,7 +33,7 @@ model CompanySettings {
   challanSuffixMarketing String?  @default("M") @db.VarChar(20)
   challanNextNoMarketing Int      @default(1)
   challanFinancialYear   String?  @default("2026-27") @db.VarChar(20)
-  companyLogo            String?  @db.LongText
+  companyLogo            String?
 
   @@map("company_settings")
 }
@@ -54,7 +54,7 @@ model Customer {
   pinCode                 String?
   country                 String?
   status                  Status                 @default(ACTIVE)
-  customerType            CustomerType           @default(CUSTOMER) // CUSTOMER = we send to them, VENDOR = they send to us
+  customerType            CustomerType           @default(CUSTOMER)
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
   deliveryChallans        DeliveryChallan[]
@@ -110,8 +110,8 @@ model DeliveryChallan {
   customerId      Int
   transporterId   Int?
   remarks         String?
-  status          ChallanStatus         @default(STOCK_SENT) // Always STOCK_SENT since it's recorded at creation
-  direction       MovementDirection     @default(OUTWARD) // OUTWARD = we send, INWARD = we receive from vendor
+  status          ChallanStatus         @default(STOCK_SENT)
+  direction       MovementDirection     @default(OUTWARD)
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
   placeOfSupply   String?
@@ -179,8 +179,8 @@ enum Status {
 }
 
 enum CustomerType {
-  CUSTOMER  // We send stock to them (OUTWARD)
-  VENDOR    // They send stock to us (INWARD)
+  CUSTOMER
+  VENDOR
 
   @@map("customer_type")
 }
@@ -191,8 +191,8 @@ enum ChallanStatus {
 }
 
 enum MovementDirection {
-  OUTWARD   // We are sending stock out to customer
-  INWARD    // We are receiving stock from vendor
+  OUTWARD
+  INWARD
 
   @@map("movement_direction")
 }
@@ -264,18 +264,17 @@ model LogisticsSummaryAgg {
   @@map("logistics_summary_agg")
 }
 
-// Stock Ledger: Track every stock movement transaction
 model StockLedger {
   id              Int         @id @default(autoincrement())
-  companyId       Int         @default(1) // Single company for now, but future-proof
+  companyId       Int         @default(1)
   productId       Int
-  transactionType String      @db.VarChar(20) // "SEND" or "RECEIVE"
+  transactionType String      @db.VarChar(20)
   quantity        Decimal     @db.Decimal(12, 3)
-  customerId      Int         // Customer who sent/received
+  customerId      Int
   challanId       Int
   challanNumber   String      @db.VarChar(50)
   remarks         String?     @db.VarChar(500)
-  runningBalance  Decimal     @db.Decimal(12, 3) // Cumulative balance after this transaction
+  runningBalance  Decimal     @db.Decimal(12, 3)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   product         StockItem   @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -290,12 +289,11 @@ model StockLedger {
   @@map("stock_ledgers")
 }
 
-// Product Inventory: Current stock levels per product
 model ProductInventory {
   id              Int         @id @default(autoincrement())
-  companyId       Int         @default(1) // Single company for now
+  companyId       Int         @default(1)
   productId       Int         @unique
-  totalQtyInHand  Decimal     @default(0) @db.Decimal(12, 3) // Can be negative
+  totalQtyInHand  Decimal     @default(0) @db.Decimal(12, 3)
   lastMovement    DateTime?   @updatedAt
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -306,13 +304,12 @@ model ProductInventory {
   @@map("product_inventories")
 }
 
-// Customer-Product Stock: Track per-customer stock levels (for reference)
 model CustomerProductStock {
   id              Int         @id @default(autoincrement())
   companyId       Int         @default(1)
   customerId      Int
   productId       Int
-  qtyWithCustomer Decimal     @default(0) @db.Decimal(12, 3) // Stock we sent to customer (pending return)
+  qtyWithCustomer Decimal     @default(0) @db.Decimal(12, 3)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   customer        Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
