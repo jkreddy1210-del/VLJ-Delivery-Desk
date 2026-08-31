@@ -34,32 +34,16 @@ const serializeChallan = (challan: unknown) => {
   return serializeValue(challan);
 };
 
-const normalizeChallanItemInput = (data: {
-  stockItemId: number;
-  quantity: number | string;
-  rate: number | string;
-  amount?: number | string;
-  gstRate?: number | string;
-  remarks?: string;
-}) => {
+const normalizeChallanItemInput = (data: { stockItemId: number; quantity: number | string; rate: number | string; amount?: number | string; gstRate?: number | string; remarks?: string }) => {
   const quantity = Number(data.quantity ?? 0);
   const rate = Number(data.rate ?? 0);
   const amount = Number((Number(data.amount ?? quantity * rate)).toFixed(2));
   const gstRate = Number(data.gstRate ?? 3);
-
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Item quantity must be greater than zero");
   if (!Number.isFinite(rate) || rate < 0) throw new Error("Item rate is invalid");
   if (!Number.isFinite(amount) || amount < 0) throw new Error("Item amount is invalid");
   if (!Number.isFinite(gstRate) || gstRate < 0) throw new Error("GST rate is invalid");
-
-  return {
-    stockItemId: Number(data.stockItemId),
-    quantity: toDecimal(quantity),
-    rate: toDecimal(rate),
-    amount: toDecimal(amount),
-    gstRate: toDecimal(gstRate),
-    remarks: optionalText(data.remarks),
-  };
+  return { stockItemId: Number(data.stockItemId), quantity: toDecimal(quantity), rate: toDecimal(rate), amount: toDecimal(amount), gstRate: toDecimal(gstRate), remarks: optionalText(data.remarks) };
 };
 
 export type ChallanInput = {
@@ -104,20 +88,16 @@ const normalizeChallanInput = (data: ChallanInput) => ({
   status: data.status ?? "STOCK_SENT",
 });
 
-const challanInclude = {
-  customer: true,
-  transporter: true,
-  items: { include: { stockItem: true } },
-} as const;
+const challanInclude = { customer: true, transporter: true, items: { include: { stockItem: true } } } as const;
 
-export async function listDeliveryChallans({ search, status = "ALL", deliveryType = "ALL", fromDate, toDate, page = 1, pageSize = 10 }: { search?: string; status?: "ALL" | ChallanStatusValue; deliveryType?: "ALL" | DeliveryTypeValue; fromDate?: string; toDate?: string; page?: number; pageSize?: number }) {
+export async function listDeliveryChallans({ search, status = "ALL", deliveryType = "ALL", direction = "ALL", fromDate, toDate, page = 1, pageSize = 10 }: { search?: string; status?: "ALL" | ChallanStatusValue; deliveryType?: "ALL" | DeliveryTypeValue; direction?: "ALL" | MovementDirectionValue; fromDate?: string; toDate?: string; page?: number; pageSize?: number }) {
   const take = Math.min(Math.max(pageSize, 1), 500);
   const skip = (Math.max(page, 1) - 1) * take;
   const searchTerm = search?.trim();
   const challanDate: { gte?: Date; lte?: Date } = {};
   if (fromDate) challanDate.gte = new Date(fromDate);
   if (toDate) { const end = new Date(toDate); end.setHours(23, 59, 59, 999); challanDate.lte = end; }
-  const where = { ...(status !== "ALL" ? { status } : {}), ...(deliveryType !== "ALL" ? { deliveryType } : {}), ...(fromDate || toDate ? { challanDate } : {}), ...(searchTerm ? { customer: { ledgerName: { contains: searchTerm } } } : {}) };
+  const where = { ...(status !== "ALL" ? { status } : {}), ...(deliveryType !== "ALL" ? { deliveryType } : {}), ...(direction !== "ALL" ? { direction } : {}), ...(fromDate || toDate ? { challanDate } : {}), ...(searchTerm ? { customer: { ledgerName: { contains: searchTerm } } } : {}) };
   const [rows, total] = await Promise.all([
     prisma.deliveryChallan.findMany({ where, orderBy: { challanDate: "desc" }, skip, take, include: challanInclude }),
     prisma.deliveryChallan.count({ where }),
@@ -142,13 +122,8 @@ export async function createDeliveryChallan(data: ChallanInput & { items: Array<
     const direction = normalized.direction;
     const transactionType = direction === "INWARD" ? "RECEIVE" : "SEND";
     const status = direction === "INWARD" ? "STOCK_RECEIVED" : "STOCK_SENT";
-    const challan = await tx.deliveryChallan.create({
-      data: { ...normalized, challanNumber, direction, status, items: { create: data.items.map(normalizeChallanItemInput) } },
-      include: challanInclude,
-    });
-    for (const item of data.items) {
-      await recordStockMovementInTransaction(tx, { productId: Number(item.stockItemId), customerId: challan.customerId, challanId: challan.id, challanNumber: challan.challanNumber, transactionType, quantity: new Prisma.Decimal(item.quantity), remarks: item.remarks || challan.remarks || null });
-    }
+    const challan = await tx.deliveryChallan.create({ data: { ...normalized, challanNumber, direction, status, items: { create: data.items.map(normalizeChallanItemInput) } }, include: challanInclude });
+    for (const item of data.items) await recordStockMovementInTransaction(tx, { productId: Number(item.stockItemId), customerId: challan.customerId, challanId: challan.id, challanNumber: challan.challanNumber, transactionType, quantity: new Prisma.Decimal(item.quantity), remarks: item.remarks || challan.remarks || null });
     return serializeChallan(challan);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
