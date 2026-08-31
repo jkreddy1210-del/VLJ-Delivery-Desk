@@ -22,7 +22,7 @@ const deliveryChallanSchema = z.object({
   challanNumber: z.string().trim().optional(),
   challanDate: z.string().optional(),
   deliveryType: z.enum(["APPROVAL", "JOB_WORK", "MARKETING"]).optional(),
-  direction: z.enum(["INWARD", "OUTWARD"]).default("OUTWARD"),
+  direction: z.enum(["INWARD", "OUTWARD"]),
   roundoff: z.coerce.number().optional(),
   customerId: z.coerce.number().int().positive(),
   transporterId: z.coerce.number().int().positive().optional().nullable(),
