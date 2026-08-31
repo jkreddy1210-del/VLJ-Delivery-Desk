@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { FormSection, Field } from "@/components/FormSection";
-import { useNavigate } from "@tanstack/react-router";
 import { createCustomerFn, getCustomerFn, updateCustomerFn } from "@/routes/api/customers";
 
 type FieldDef = { name: string; label: string; required?: boolean; type?: string; span?: boolean };
@@ -22,6 +21,7 @@ type CustomerValues = {
   state?: string;
   pinCode?: string;
   country?: string;
+  customerType?: "CUSTOMER" | "VENDOR";
 };
 
 const identity: FieldDef[] = [
@@ -70,13 +70,12 @@ function Grid({ fields, values }: { fields: FieldDef[]; values?: CustomerValues 
 export function CustomerForm({ mode, customerId }: { mode: "new" | "edit"; customerId?: number }) {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [values, setValues] = useState<CustomerValues>({});
+  const [values, setValues] = useState<CustomerValues>({ customerType: "CUSTOMER" });
 
   useEffect(() => {
     if (mode !== "edit" || !customerId) return;
 
     let cancelled = false;
-
     const load = async () => {
       const customer = await getCustomerFn({ data: { id: customerId } });
       if (!cancelled) {
@@ -94,6 +93,7 @@ export function CustomerForm({ mode, customerId }: { mode: "new" | "edit"; custo
           state: customer?.state ?? "",
           pinCode: customer?.pinCode ?? "",
           country: customer?.country ?? "",
+          customerType: customer?.customerType ?? "CUSTOMER",
         });
       }
     };
@@ -110,40 +110,54 @@ export function CustomerForm({ mode, customerId }: { mode: "new" | "edit"; custo
         e.preventDefault();
         setIsSubmitting(true);
 
-        const form = new FormData(e.currentTarget);
-        const payload = {
-          ledgerName: form.get("ledgerName")?.toString() || "",
-          contactPerson: form.get("contactPerson")?.toString() || "",
-          mobile: form.get("mobile")?.toString() || "",
-          phone: form.get("phone")?.toString() || "",
-          email: form.get("email")?.toString() || "",
-          gstin: form.get("gstin")?.toString() || "",
-          addressLine1: form.get("addressLine1")?.toString() || "",
-          addressLine2: form.get("addressLine2")?.toString() || "",
-          city: form.get("city")?.toString() || "",
-          district: form.get("district")?.toString() || "",
-          state: form.get("state")?.toString() || "",
-          pinCode: form.get("pinCode")?.toString() || "",
-          country: form.get("country")?.toString() || "",
-        };
+        try {
+          const form = new FormData(e.currentTarget);
+          const payload = {
+            ledgerName: form.get("ledgerName")?.toString() || "",
+            contactPerson: form.get("contactPerson")?.toString() || "",
+            mobile: form.get("mobile")?.toString() || "",
+            phone: form.get("phone")?.toString() || "",
+            email: form.get("email")?.toString() || "",
+            gstin: form.get("gstin")?.toString() || "",
+            addressLine1: form.get("addressLine1")?.toString() || "",
+            addressLine2: form.get("addressLine2")?.toString() || "",
+            city: form.get("city")?.toString() || "",
+            district: form.get("district")?.toString() || "",
+            state: form.get("state")?.toString() || "",
+            pinCode: form.get("pinCode")?.toString() || "",
+            country: form.get("country")?.toString() || "",
+            customerType: (form.get("customerType")?.toString() || "CUSTOMER") as "CUSTOMER" | "VENDOR",
+          };
 
-        if (mode === "edit" && customerId) {
-          await updateCustomerFn({
-            data: {
-              id: customerId,
-              data: payload,
-            },
-          });
-        } else {
-          await createCustomerFn({ data: payload });
+          if (mode === "edit" && customerId) {
+            await updateCustomerFn({ data: { id: customerId, data: payload } });
+          } else {
+            await createCustomerFn({ data: payload });
+          }
+
+          navigate({ to: "/customers" });
+        } finally {
+          setIsSubmitting(false);
         }
-
-        navigate({ to: "/customers" });
       }}
       className="space-y-6"
     >
-      <FormSection title="Party Details" description="Identity and contact information">
+      <FormSection title="Party Details" description="Identity, contact information and party classification">
         <Grid fields={identity} values={values} />
+        <div className="mt-5 grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
+          <Field label="Party Type" htmlFor="customerType" required>
+            <select
+              id="customerType"
+              name="customerType"
+              required
+              defaultValue={values.customerType ?? "CUSTOMER"}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="CUSTOMER">Customer — Stock goes OUT</option>
+              <option value="VENDOR">Vendor — Stock comes IN</option>
+            </select>
+          </Field>
+        </div>
       </FormSection>
 
       <FormSection
