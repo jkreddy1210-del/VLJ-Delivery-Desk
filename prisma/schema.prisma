@@ -1,0 +1,325 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model CompanySettings {
+  id                     Int      @id @default(autoincrement())
+  companyName            String
+  gstin                  String?
+  pan                    String?
+  address                String?
+  city                   String?
+  state                  String?
+  pinCode                String?
+  country                String?
+  phone                  String?
+  email                  String?
+  website                String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  challanPrefix          String?  @default("VLJ") @db.VarChar(50)
+  challanNextNo          Int      @default(1)
+  challanSuffix          String?  @default("A") @db.VarChar(20)
+  challanSuffixApproval  String?  @default("A") @db.VarChar(20)
+  challanNextNoApproval  Int      @default(1)
+  challanSuffixJobWork   String?  @default("JB") @db.VarChar(20)
+  challanNextNoJobWork   Int      @default(1)
+  challanSuffixMarketing String?  @default("M") @db.VarChar(20)
+  challanNextNoMarketing Int      @default(1)
+  challanFinancialYear   String?  @default("2026-27") @db.VarChar(20)
+  companyLogo            String?  @db.LongText
+
+  @@map("company_settings")
+}
+
+model Customer {
+  id                      Int                    @id @default(autoincrement())
+  ledgerName              String
+  contactPerson           String?
+  mobile                  String?
+  phone                   String?
+  email                   String?
+  gstin                   String?
+  addressLine1            String?
+  addressLine2            String?
+  city                    String?
+  district                String?
+  state                   String?
+  pinCode                 String?
+  country                 String?
+  status                  Status                 @default(ACTIVE)
+  customerType            CustomerType           @default(CUSTOMER) // CUSTOMER = we send to them, VENDOR = they send to us
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  deliveryChallans        DeliveryChallan[]
+  logisticsSummaryItems   LogisticsSummaryItem[]
+  stockLedgers            StockLedger[]
+  customerProductStocks   CustomerProductStock[]
+
+  @@map("customers")
+}
+
+model StockItem {
+  id                      Int                   @id @default(autoincrement())
+  productCode             String                @unique
+  productName             String
+  hsnCode                 String?
+  unit                    String
+  description             String?
+  status                  Status                @default(ACTIVE)
+  stockGroupId            Int
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  challanItems            DeliveryChallanItem[]
+  stockGroup              StockGroup            @relation(fields: [stockGroupId], references: [id])
+  stockLedgers            StockLedger[]
+  productInventory        ProductInventory?
+  customerProductStocks   CustomerProductStock[]
+
+  @@index([stockGroupId], map: "stock_items_stockGroupId_fkey")
+  @@map("stock_items")
+}
+
+model Transporter {
+  id                    Int               @id @default(autoincrement())
+  name                  String
+  mobile                String?
+  gstin                 String?
+  vehicleNumber         String?
+  address               String?
+  status                Status            @default(ACTIVE)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  deliveryChallans      DeliveryChallan[]
+  logisticsSummaries    LogisticsSummary[]
+  logisticsSummaryAgg   LogisticsSummaryAgg?
+
+  @@map("transporters")
+}
+
+model DeliveryChallan {
+  id              Int                   @id @default(autoincrement())
+  challanNumber   String                @unique
+  challanDate     DateTime              @default(now())
+  customerId      Int
+  transporterId   Int?
+  remarks         String?
+  status          ChallanStatus         @default(STOCK_SENT) // Always STOCK_SENT since it's recorded at creation
+  direction       MovementDirection     @default(OUTWARD) // OUTWARD = we send, INWARD = we receive from vendor
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  placeOfSupply   String?
+  referenceNo     String?
+  referenceDate   DateTime?
+  buyerOrderNo    String?
+  dispatchDocNo   String?
+  modeOfPayment   String?
+  otherReferences String?
+  destination     String?
+  termsOfDelivery String?
+  deliveryType    DeliveryType          @default(APPROVAL)
+  roundoff        Decimal               @default(0.00) @db.Decimal(12, 2)
+  items           DeliveryChallanItem[]
+  customer        Customer              @relation(fields: [customerId], references: [id])
+  transporter     Transporter?          @relation(fields: [transporterId], references: [id])
+  stockLedgers    StockLedger[]
+
+  @@index([customerId], map: "delivery_challans_customerId_fkey")
+  @@index([transporterId], map: "delivery_challans_transporterId_fkey")
+  @@index([deliveryType])
+  @@index([direction], map: "delivery_challans_direction_idx")
+  @@map("delivery_challans")
+}
+
+model DeliveryChallanItem {
+  id          Int             @id @default(autoincrement())
+  challanId   Int
+  stockItemId Int
+  quantity    Decimal         @db.Decimal(12, 3)
+  rate        Decimal         @db.Decimal(12, 2)
+  amount      Decimal         @db.Decimal(14, 2)
+  remarks     String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  gstRate     Decimal         @default(3.00) @db.Decimal(5, 2)
+  challan     DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  stockItem   StockItem       @relation(fields: [stockItemId], references: [id])
+
+  @@index([challanId], map: "delivery_challan_items_challanId_fkey")
+  @@index([stockItemId], map: "delivery_challan_items_stockItemId_fkey")
+  @@map("delivery_challan_items")
+}
+
+model StockGroup {
+  id            Int              @id @default(autoincrement())
+  groupName     String           @unique(map: "StockGroup_groupName_key") @db.VarChar(150)
+  description   String?          @db.VarChar(500)
+  parentGroupId Int?
+  status        StockGroupStatus @default(ACTIVE)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  stockItems    StockItem[]
+  parentGroup   StockGroup?      @relation("StockGroupHierarchy", fields: [parentGroupId], references: [id], map: "StockGroup_parentGroupId_fkey")
+  childGroups   StockGroup[]     @relation("StockGroupHierarchy")
+
+  @@index([parentGroupId], map: "StockGroup_parentGroupId_idx")
+  @@index([status], map: "StockGroup_status_idx")
+  @@map("stockgroup")
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum CustomerType {
+  CUSTOMER  // We send stock to them (OUTWARD)
+  VENDOR    // They send stock to us (INWARD)
+
+  @@map("customer_type")
+}
+
+enum ChallanStatus {
+  STOCK_SENT
+  STOCK_RECEIVED
+}
+
+enum MovementDirection {
+  OUTWARD   // We are sending stock out to customer
+  INWARD    // We are receiving stock from vendor
+
+  @@map("movement_direction")
+}
+
+enum DeliveryType {
+  APPROVAL
+  JOB_WORK
+  MARKETING
+}
+
+enum StockGroupStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("stockgroup_status")
+}
+
+model LogisticsSummary {
+  id            Int                      @id @default(autoincrement())
+  transporterId Int?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  items         LogisticsSummaryItem[]
+  transporter   Transporter?             @relation(fields: [transporterId], references: [id], onDelete: SetNull)
+
+  @@index([transporterId], map: "logistics_summary_transporterId_fkey")
+  @@index([createdAt])
+  @@map("logistics_summaries")
+}
+
+model LogisticsSummaryItem {
+  id                    Int              @id @default(autoincrement())
+  summaryId             Int
+  date                  DateTime?
+  docketNo              String?
+  customerId            Int?
+  from                  String?
+  to                    String?
+  grossWeight           Decimal          @default(0) @db.Decimal(12, 3)
+  freightCharges        Decimal          @default(0) @db.Decimal(14, 2)
+  secureHandling        Decimal          @default(0) @db.Decimal(14, 2)
+  enhancedLiability     Decimal          @default(0) @db.Decimal(14, 2)
+  fuelSurcharge         Decimal          @default(0) @db.Decimal(14, 2)
+  totalTaxable          Decimal          @default(0) @db.Decimal(14, 2)
+  gst                   Decimal          @default(0) @db.Decimal(14, 2)
+  totalInvoice          Decimal          @default(0) @db.Decimal(14, 2)
+  invoiceRecDate        DateTime?
+  paymentDate           DateTime?
+  paid                  Boolean          @default(false)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  summary               LogisticsSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+  customer              Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([summaryId], map: "logistics_summary_items_summaryId_fkey")
+  @@index([customerId], map: "logistics_summary_items_customerId_fkey")
+  @@map("logistics_summary_items")
+}
+
+model LogisticsSummaryAgg {
+  id             Int      @id @default(autoincrement())
+  transporterId  Int?
+  amountPaid     Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  transporter    Transporter? @relation(fields: [transporterId], references: [id], onDelete: SetNull)
+
+  @@unique([transporterId], map: "LogisticsSummaryAgg_transporterId_key")
+  @@map("logistics_summary_agg")
+}
+
+// Stock Ledger: Track every stock movement transaction
+model StockLedger {
+  id              Int         @id @default(autoincrement())
+  companyId       Int         @default(1) // Single company for now, but future-proof
+  productId       Int
+  transactionType String      @db.VarChar(20) // "SEND" or "RECEIVE"
+  quantity        Decimal     @db.Decimal(12, 3)
+  customerId      Int         // Customer who sent/received
+  challanId       Int
+  challanNumber   String      @db.VarChar(50)
+  remarks         String?     @db.VarChar(500)
+  runningBalance  Decimal     @db.Decimal(12, 3) // Cumulative balance after this transaction
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  product         StockItem   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customer        Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  challan         DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+
+  @@index([productId], map: "stock_ledger_productId_idx")
+  @@index([customerId], map: "stock_ledger_customerId_idx")
+  @@index([challanId], map: "stock_ledger_challanId_idx")
+  @@index([companyId, productId], map: "stock_ledger_company_product_idx")
+  @@index([createdAt], map: "stock_ledger_createdAt_idx")
+  @@map("stock_ledgers")
+}
+
+// Product Inventory: Current stock levels per product
+model ProductInventory {
+  id              Int         @id @default(autoincrement())
+  companyId       Int         @default(1) // Single company for now
+  productId       Int         @unique
+  totalQtyInHand  Decimal     @default(0) @db.Decimal(12, 3) // Can be negative
+  lastMovement    DateTime?   @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  product         StockItem   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, productId], map: "product_inventory_company_product_key")
+  @@index([productId], map: "product_inventory_productId_idx")
+  @@map("product_inventories")
+}
+
+// Customer-Product Stock: Track per-customer stock levels (for reference)
+model CustomerProductStock {
+  id              Int         @id @default(autoincrement())
+  companyId       Int         @default(1)
+  customerId      Int
+  productId       Int
+  qtyWithCustomer Decimal     @default(0) @db.Decimal(12, 3) // Stock we sent to customer (pending return)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  customer        Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product         StockItem   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, customerId, productId], map: "customer_product_stock_unique")
+  @@index([customerId], map: "customer_product_stock_customerId_idx")
+  @@index([productId], map: "customer_product_stock_productId_idx")
+  @@map("customer_product_stocks")
+}
