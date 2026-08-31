@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client.ts";
 import { prisma } from "@/lib/prisma";
-import { isDeliveryType, type DeliveryTypeValue } from "@/lib/challan-number";
+import { isDeliveryType, type DeliveryTypeValue, type MovementReasonValue } from "@/lib/challan-number";
 import { recordStockMovementInTransaction } from "@/server/inventory";
 
 export type ChallanStatusValue = "STOCK_SENT" | "STOCK_RECEIVED";
@@ -21,18 +21,13 @@ const serializeValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(serializeValue);
   if (typeof value === "object") {
     const anyValue = value as Record<string, unknown>;
-    if ("toNumber" in anyValue && typeof (anyValue as { toNumber?: () => number }).toNumber === "function") {
-      return (anyValue as { toNumber: () => number }).toNumber();
-    }
+    if ("toNumber" in anyValue && typeof (anyValue as { toNumber?: () => number }).toNumber === "function") return (anyValue as { toNumber: () => number }).toNumber();
     return Object.fromEntries(Object.entries(anyValue).map(([key, nested]) => [key, serializeValue(nested)]));
   }
   return value;
 };
 
-const serializeChallan = (challan: unknown) => {
-  if (!challan || typeof challan !== "object") return null;
-  return serializeValue(challan);
-};
+const serializeChallan = (challan: unknown) => !challan || typeof challan !== "object" ? null : serializeValue(challan);
 
 const normalizeChallanItemInput = (data: { stockItemId: number; quantity: number | string; rate: number | string; amount?: number | string; gstRate?: number | string; remarks?: string }) => {
   const quantity = Number(data.quantity ?? 0);
@@ -51,6 +46,11 @@ export type ChallanInput = {
   challanDate?: string | Date;
   deliveryType?: DeliveryTypeValue;
   direction?: MovementDirectionValue;
+  movementReason?: MovementReasonValue;
+  againstVoucherNo?: string;
+  invoiceNo?: string;
+  noteType?: "CREDIT" | "DEBIT" | null;
+  noteNo?: string;
   roundoff?: number | string;
   customerId?: number;
   transporterId?: number | null;
@@ -72,6 +72,11 @@ const normalizeChallanInput = (data: ChallanInput) => ({
   challanDate: data.challanDate ? new Date(data.challanDate) : new Date(),
   deliveryType: isDeliveryType(data.deliveryType) ? data.deliveryType : ("APPROVAL" as DeliveryTypeValue),
   direction: data.direction === "INWARD" ? "INWARD" : "OUTWARD",
+  movementReason: data.movementReason ?? "ORIGINAL",
+  againstVoucherNo: optionalText(data.againstVoucherNo),
+  invoiceNo: optionalText(data.invoiceNo),
+  noteType: data.noteType ?? null,
+  noteNo: optionalText(data.noteNo),
   roundoff: toDecimal(Number(data.roundoff ?? 0)),
   customerId: Number(data.customerId ?? 0),
   transporterId: data.transporterId ? Number(data.transporterId) : null,
@@ -98,10 +103,7 @@ export async function listDeliveryChallans({ search, status = "ALL", deliveryTyp
   if (fromDate) challanDate.gte = new Date(fromDate);
   if (toDate) { const end = new Date(toDate); end.setHours(23, 59, 59, 999); challanDate.lte = end; }
   const where = { ...(status !== "ALL" ? { status } : {}), ...(deliveryType !== "ALL" ? { deliveryType } : {}), ...(direction !== "ALL" ? { direction } : {}), ...(fromDate || toDate ? { challanDate } : {}), ...(searchTerm ? { customer: { ledgerName: { contains: searchTerm } } } : {}) };
-  const [rows, total] = await Promise.all([
-    prisma.deliveryChallan.findMany({ where, orderBy: { challanDate: "desc" }, skip, take, include: challanInclude }),
-    prisma.deliveryChallan.count({ where }),
-  ]);
+  const [rows, total] = await Promise.all([prisma.deliveryChallan.findMany({ where, orderBy: { challanDate: "desc" }, skip, take, include: challanInclude }), prisma.deliveryChallan.count({ where })]);
   return { rows: rows.map(serializeChallan), total, page, pageSize: take, totalPages: Math.max(1, Math.ceil(total / take)) };
 }
 
@@ -122,7 +124,10 @@ export async function createDeliveryChallan(data: ChallanInput & { items: Array<
     const direction = normalized.direction;
     const transactionType = direction === "INWARD" ? "RECEIVE" : "SEND";
     const status = direction === "INWARD" ? "STOCK_RECEIVED" : "STOCK_SENT";
-    const challan = await tx.deliveryChallan.create({ data: { ...normalized, challanNumber, direction, status, items: { create: data.items.map(normalizeChallanItemInput) } }, include: challanInclude });
+    const challan = await tx.deliveryChallan.create({
+      data: { ...normalized, challanNumber, direction, status, items: { create: data.items.map(normalizeChallanItemInput) } },
+      include: challanInclude,
+    });
     for (const item of data.items) await recordStockMovementInTransaction(tx, { productId: Number(item.stockItemId), customerId: challan.customerId, challanId: challan.id, challanNumber: challan.challanNumber, transactionType, quantity: new Prisma.Decimal(item.quantity), remarks: item.remarks || challan.remarks || null });
     return serializeChallan(challan);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -142,7 +147,30 @@ export async function updateDeliveryChallan(id: number, data: ChallanInput & { i
       const sameItems = incoming.length === original.items.length && incoming.every((item, index) => { const old = original.items[index]; return item.stockItemId === old.stockItemId && item.quantity.equals(old.quantity); });
       if (!sameItems) throw new Error("Stock items or quantities cannot be changed after the challan has posted stock. Create a reversal/new challan instead.");
     }
-    const updated = await tx.deliveryChallan.update({ where: { id }, data: { deliveryType: normalized.deliveryType, roundoff: normalized.roundoff, transporterId: normalized.transporterId, placeOfSupply: normalized.placeOfSupply, referenceNo: normalized.referenceNo, referenceDate: normalized.referenceDate, buyerOrderNo: normalized.buyerOrderNo, dispatchDocNo: normalized.dispatchDocNo, modeOfPayment: normalized.modeOfPayment, otherReferences: normalized.otherReferences, destination: normalized.destination, termsOfDelivery: normalized.termsOfDelivery, remarks: normalized.remarks }, include: challanInclude });
+    const updated = await tx.deliveryChallan.update({
+      where: { id },
+      data: {
+        deliveryType: normalized.deliveryType,
+        movementReason: normalized.movementReason,
+        againstVoucherNo: normalized.againstVoucherNo,
+        invoiceNo: normalized.invoiceNo,
+        noteType: normalized.noteType,
+        noteNo: normalized.noteNo,
+        roundoff: normalized.roundoff,
+        transporterId: normalized.transporterId,
+        placeOfSupply: normalized.placeOfSupply,
+        referenceNo: normalized.referenceNo,
+        referenceDate: normalized.referenceDate,
+        buyerOrderNo: normalized.buyerOrderNo,
+        dispatchDocNo: normalized.dispatchDocNo,
+        modeOfPayment: normalized.modeOfPayment,
+        otherReferences: normalized.otherReferences,
+        destination: normalized.destination,
+        termsOfDelivery: normalized.termsOfDelivery,
+        remarks: normalized.remarks,
+      },
+      include: challanInclude,
+    });
     return serializeChallan(updated);
   });
 }
