@@ -22,6 +22,7 @@ const deliveryChallanSchema = z.object({
   challanNumber: z.string().trim().optional(),
   challanDate: z.string().optional(),
   deliveryType: z.enum(["APPROVAL", "JOB_WORK", "MARKETING"]).optional(),
+  direction: z.enum(["INWARD", "OUTWARD"]).default("OUTWARD"),
   roundoff: z.coerce.number().optional(),
   customerId: z.coerce.number().int().positive(),
   transporterId: z.coerce.number().int().positive().optional().nullable(),
@@ -64,12 +65,7 @@ export const createDeliveryChallanFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => (await createDeliveryChallan(data)) as any);
 
 export const updateDeliveryChallanFn = createServerFn({ method: "POST" })
-  .validator(
-    z.object({
-      id: z.coerce.number().int().positive(),
-      data: deliveryChallanSchema.partial(),
-    }),
-  )
+  .validator(z.object({ id: z.coerce.number().int().positive(), data: deliveryChallanSchema.partial() }))
   .handler(async ({ data }) => (await updateDeliveryChallan(data.id, data.data)) as any);
 
 export const deleteDeliveryChallanFn = createServerFn({ method: "POST" })
