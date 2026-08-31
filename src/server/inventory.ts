@@ -43,10 +43,12 @@ async function recordStockMovementWithClient(
         productId,
         companyId: 1,
         totalQtyInHand: new Prisma.Decimal(0),
+        lastMovement: new Date(),
       },
     });
   }
 
+  const movementAt = new Date();
   const newBalance =
     transactionType === "SEND"
       ? productInventory.totalQtyInHand.minus(quantityDecimal)
@@ -68,7 +70,7 @@ async function recordStockMovementWithClient(
 
   await client.productInventory.update({
     where: { productId },
-    data: { totalQtyInHand: newBalance },
+    data: { totalQtyInHand: newBalance, lastMovement: movementAt },
   });
 
   const customerStock = await client.customerProductStock.findUnique({
