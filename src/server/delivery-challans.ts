@@ -48,6 +48,8 @@ const normalizeChallanItemInput = (data: {
 
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Item quantity must be greater than zero");
   if (!Number.isFinite(rate) || rate < 0) throw new Error("Item rate is invalid");
+  if (!Number.isFinite(amount) || amount < 0) throw new Error("Item amount is invalid");
+  if (!Number.isFinite(gstRate) || gstRate < 0) throw new Error("GST rate is invalid");
 
   return {
     stockItemId: Number(data.stockItemId),
@@ -227,7 +229,18 @@ export async function updateDeliveryChallan(
     if (!original) throw new Error("Challan not found");
 
     if (data.customerId !== undefined && Number(data.customerId) !== original.customerId) {
-      throw new Error("Customer cannot be changed after the challan has posted stock. Create a reversal/new challan instead.");
+      throw new Error("Party cannot be changed after the challan has posted stock. Create a reversal/new challan instead.");
+    }
+
+    if (data.challanNumber !== undefined && data.challanNumber.trim() !== original.challanNumber) {
+      throw new Error("Voucher number cannot be changed after stock is posted.");
+    }
+
+    if (data.challanDate !== undefined) {
+      const requestedDate = new Date(data.challanDate);
+      if (Number.isNaN(requestedDate.getTime()) || requestedDate.getTime() !== original.challanDate.getTime()) {
+        throw new Error("Voucher date cannot be changed after stock is posted.");
+      }
     }
 
     if (data.items) {
@@ -244,8 +257,6 @@ export async function updateDeliveryChallan(
     const updated = await tx.deliveryChallan.update({
       where: { id },
       data: {
-        challanNumber: normalized.challanNumber || undefined,
-        challanDate: normalized.challanDate,
         deliveryType: normalized.deliveryType,
         roundoff: normalized.roundoff,
         transporterId: normalized.transporterId,
@@ -276,7 +287,6 @@ export async function deleteDeliveryChallan(id: number) {
     if (!challan) throw new Error("Challan not found");
 
     const affectedProducts = [...new Set(challan.items.map((item) => item.stockItemId))];
-    const affectedCustomer = challan.customerId;
 
     await tx.deliveryChallan.delete({ where: { id } });
 
@@ -297,7 +307,7 @@ export async function deleteDeliveryChallan(id: number) {
       await tx.productInventory.upsert({
         where: { productId },
         create: { productId, companyId: 1, totalQtyInHand: runningBalance },
-        update: { totalQtyInHand: runningBalance },
+        update: { totalQtyInHand: runningBalance, lastMovement: entries.at(-1)?.createdAt ?? null },
       });
     }
 
@@ -316,7 +326,6 @@ export async function deleteDeliveryChallan(id: number) {
       });
     }
 
-    void affectedCustomer;
     return challan;
   });
 }
