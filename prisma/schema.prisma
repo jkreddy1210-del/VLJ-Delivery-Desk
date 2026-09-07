@@ -44,6 +44,7 @@ model Customer {
   mobile String?
   phone String?
   email String?
+  website String?
   gstin String?
   addressLine1 String?
   addressLine2 String?
@@ -196,7 +197,7 @@ model StockGroup {
 enum Status { ACTIVE INACTIVE }
 enum CustomerType { CUSTOMER VENDOR @@map("customer_type") }
 enum ChallanStatus { STOCK_SENT STOCK_RECEIVED }
-enum MovementDirection { OUTWARD INWARD @@map("movement_direction") }
+enum MovementDirection { INWARD OUTWARD @@map("movement_direction") }
 enum MovementReason { ORIGINAL RETURN REPLACEMENT OTHER }
 enum NoteType { CREDIT DEBIT }
 enum DeliveryType { APPROVAL JOB_WORK MARKETING }
@@ -208,7 +209,7 @@ model LogisticsSummary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   items LogisticsSummaryItem[]
-  transporter Transporter? @relation(fields: [transporterId], references: [id], onDelete: SetNull)
+  transporter Transporter? @relation([fields: [transporterId], references: [id], onDelete: SetNull)
   @@index([transporterId], map: "logistics_summary_transporterId_fkey")
   @@index([createdAt])
   @@map("logistics_summaries")
@@ -277,7 +278,7 @@ model ProductInventory {
   id Int @id @default(autoincrement())
   companyId Int @default(1)
   productId Int @unique
-  totalQtyInHand Decimal @default(0) 
+  totalQtyInHand Decimal @default(0) @db.Decimal(12,3)
   lastMovement DateTime? @updatedAt
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -291,7 +292,7 @@ model CustomerProductStock {
   companyId Int @default(1)
   customerId Int
   productId Int
-  qtyWithCustomer Decimal @default(0)
+  qtyWithCustomer Decimal @default(0) @db.Decimal(12,3)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
