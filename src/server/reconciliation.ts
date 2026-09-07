@@ -18,18 +18,8 @@ const serialize = (value: any): any => {
 
 export async function getCustomerReconciliation(customerId: number) {
   const [movements, challans, settlements] = await Promise.all([
-    prisma.stockLedger.findMany({
-      where: { customerId },
-      include: { product: { select: { id: true, productName: true, productCode: true, unit: true } } },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    }),
-    prisma.deliveryChallan.findMany({
-      where: { customerId },
-      include: {
-        items: { include: { stockItem: { select: { id: true, productName: true, productCode: true, unit: true } } } },
-      },
-      orderBy: [{ challanDate: "asc" }, { id: "asc" }],
-    }),
+    prisma.stockLedger.findMany({ where: { customerId }, include: { product: { select: { id: true, productName: true, productCode: true, unit: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    prisma.deliveryChallan.findMany({ where: { customerId }, include: { items: { include: { stockItem: { select: { id: true, productName: true, productCode: true, unit: true } } } } }, orderBy: [{ challanDate: "asc" }, { id: "asc" }] }),
     prisma.deliveryChallanSettlement.findMany({
       where: { challan: { customerId } },
       include: {
@@ -52,7 +42,11 @@ export async function getCustomerReconciliation(customerId: number) {
     .map((challan) => {
       const items = challan.items.map((item) => {
         const settled = settledByItem.get(item.id) ?? new Prisma.Decimal(0);
-        const outstanding = Prisma.Decimal.max(new Prisma.Decimal(0), item.quantity.minus(settled));
+        const rawOutstanding = item.quantity.minus(settled);
+        const outstanding = rawOutstanding.lessThan(0) ? new Prisma.Decimal(0) : rawOutstanding;
+        const settledAmount = settlements
+          .filter((s) => s.challanItemId === item.id && CLEARING_SETTLEMENT_TYPES.includes(s.documentType as SettlementTypeValue))
+          .reduce((sum, s) => sum.plus(s.amount), new Prisma.Decimal(0));
         return {
           itemId: item.id,
           product: item.stockItem,
@@ -60,10 +54,7 @@ export async function getCustomerReconciliation(customerId: number) {
           clearedQuantity: settled.toNumber(),
           outstandingQuantity: outstanding.toNumber(),
           originalAmount: item.amount.toNumber(),
-          settledAmount: settlements
-            .filter((s) => s.challanItemId === item.id && CLEARING_SETTLEMENT_TYPES.includes(s.documentType as SettlementTypeValue))
-            .reduce((sum, s) => sum.plus(s.amount), new Prisma.Decimal(0))
-            .toNumber(),
+          settledAmount: settledAmount.toNumber(),
         };
       }).filter((item) => item.outstandingQuantity > 0);
 
@@ -83,44 +74,23 @@ export async function getCustomerReconciliation(customerId: number) {
 
   const products = new Map<number, { product: any; outward: Prisma.Decimal; inward: Prisma.Decimal; invoiced: Prisma.Decimal; returned: Prisma.Decimal }>();
   for (const row of movements) {
-    const current = products.get(row.productId) ?? {
-      product: row.product,
-      outward: new Prisma.Decimal(0),
-      inward: new Prisma.Decimal(0),
-      invoiced: new Prisma.Decimal(0),
-      returned: new Prisma.Decimal(0),
-    };
+    const current = products.get(row.productId) ?? { product: row.product, outward: new Prisma.Decimal(0), inward: new Prisma.Decimal(0), invoiced: new Prisma.Decimal(0), returned: new Prisma.Decimal(0) };
     if (row.transactionType === "SEND") current.outward = current.outward.plus(row.quantity);
     else current.inward = current.inward.plus(row.quantity);
     products.set(row.productId, current);
   }
   for (const row of settlements) {
-    if (row.documentType === "INVOICE") {
-      const current = products.get(row.challanItem.stockItemId);
-      if (current) current.invoiced = current.invoiced.plus(row.quantity);
-    }
-    if (row.documentType === "RETURN_DC") {
-      const current = products.get(row.challanItem.stockItemId);
-      if (current) current.returned = current.returned.plus(row.quantity);
-    }
+    const current = products.get(row.challanItem.stockItemId);
+    if (!current) continue;
+    if (row.documentType === "INVOICE") current.invoiced = current.invoiced.plus(row.quantity);
+    if (row.documentType === "RETURN_DC") current.returned = current.returned.plus(row.quantity);
   }
 
   return {
     products: Array.from(products.values()).map((x) => {
       const balanceWithParty = x.outward.minus(x.inward);
-      const pending = openVouchers
-        .flatMap((v) => v.items)
-        .filter((item) => item.product.id === x.product.id)
-        .reduce((sum, item) => sum + item.outstandingQuantity, 0);
-      return {
-        product: x.product,
-        outward: x.outward.toNumber(),
-        inward: x.inward.toNumber(),
-        invoiced: x.invoiced.toNumber(),
-        returned: x.returned.toNumber(),
-        balanceWithParty: balanceWithParty.toNumber(),
-        pending,
-      };
+      const pending = openVouchers.flatMap((v) => v.items).filter((item) => item.product.id === x.product.id).reduce((sum, item) => sum + item.outstandingQuantity, 0);
+      return { product: x.product, outward: x.outward.toNumber(), inward: x.inward.toNumber(), invoiced: x.invoiced.toNumber(), returned: x.returned.toNumber(), balanceWithParty: balanceWithParty.toNumber(), pending };
     }),
     openVouchers,
     settlements: settlements.map(serialize),
@@ -152,9 +122,8 @@ export async function createChallanSettlement(data: {
     const amount = new Prisma.Decimal(data.amount ?? 0);
     if (quantity.lessThan(0) || amount.lessThan(0)) throw new Error("Settlement quantity/amount cannot be negative");
 
-    if (data.documentType === "INVOICE" && quantity.isZero()) {
-      throw new Error("Invoice clearance requires a quantity");
-    }
+    if (data.documentType === "INVOICE" && quantity.isZero()) throw new Error("Invoice clearance requires a quantity");
+
     if (data.documentType === "RETURN_DC") {
       if (quantity.isZero()) throw new Error("Return DC clearance requires a quantity");
       const returnChallan = await tx.deliveryChallan.findFirst({
@@ -168,40 +137,21 @@ export async function createChallanSettlement(data: {
         select: { id: true, challanNumber: true, againstVoucherNo: true },
       });
       if (!returnChallan) throw new Error("Return DC not found. Create the opposite-direction return/replacement DC first, then use its number here.");
-      if (returnChallan.againstVoucherNo && returnChallan.againstVoucherNo !== challan.challanNumber) {
-        throw new Error(`Return DC ${documentNo} is linked to ${returnChallan.againstVoucherNo}, not ${challan.challanNumber}.`);
-      }
+      if (returnChallan.againstVoucherNo && returnChallan.againstVoucherNo !== challan.challanNumber) throw new Error(`Return DC ${documentNo} is linked to ${returnChallan.againstVoucherNo}, not ${challan.challanNumber}.`);
       const duplicate = await tx.deliveryChallanSettlement.findFirst({ where: { challanId: challan.id, documentType: "RETURN_DC", documentNo } });
       if (duplicate) throw new Error("This return DC is already linked to the voucher.");
     }
 
     if (CLEARING_SETTLEMENT_TYPES.includes(data.documentType)) {
-      const existing = await tx.deliveryChallanSettlement.aggregate({
-        where: { challanItemId: item.id, documentType: { in: CLEARING_SETTLEMENT_TYPES } },
-        _sum: { quantity: true },
-      });
+      const existing = await tx.deliveryChallanSettlement.aggregate({ where: { challanItemId: item.id, documentType: { in: CLEARING_SETTLEMENT_TYPES } }, _sum: { quantity: true } });
       const already = existing._sum.quantity ?? new Prisma.Decimal(0);
       const remaining = item.quantity.minus(already);
-      if (quantity.greaterThan(remaining)) {
-        throw new Error(`Clearance quantity exceeds remaining quantity. Remaining: ${remaining.toString()}`);
-      }
+      if (quantity.greaterThan(remaining)) throw new Error(`Clearance quantity exceeds remaining quantity. Remaining: ${remaining.toString()}`);
     }
 
     return serialize(await tx.deliveryChallanSettlement.create({
-      data: {
-        challanId: challan.id,
-        challanItemId: item.id,
-        documentType: data.documentType,
-        documentNo,
-        documentDate: data.documentDate ? new Date(data.documentDate) : null,
-        quantity,
-        amount,
-        remarks: data.remarks?.trim() || null,
-      },
-      include: {
-        challan: { select: { challanNumber: true, direction: true, deliveryType: true } },
-        challanItem: { include: { stockItem: true } },
-      },
+      data: { challanId: challan.id, challanItemId: item.id, documentType: data.documentType, documentNo, documentDate: data.documentDate ? new Date(data.documentDate) : null, quantity, amount, remarks: data.remarks?.trim() || null },
+      include: { challan: { select: { challanNumber: true, direction: true, deliveryType: true } }, challanItem: { include: { stockItem: true } } },
     }));
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
