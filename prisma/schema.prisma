@@ -79,7 +79,7 @@ model StockItem {
   stockLedgers StockLedger[]
   productInventory ProductInventory?
   customerProductStocks CustomerProductStock[]
-  @@index([stockGroupId], map: "stock_items_stockGroupId_fkey")
+  @@index([stockGroupId], map: "stock_items_stockGroupId_idx")
   @@map("stock_items")
 }
 
@@ -133,8 +133,8 @@ model DeliveryChallan {
   transporter Transporter? @relation(fields: [transporterId], references: [id])
   stockLedgers StockLedger[]
   settlements DeliveryChallanSettlement[]
-  @@index([customerId], map: "delivery_challans_customerId_fkey")
-  @@index([transporterId], map: "delivery_challans_transporterId_fkey")
+  @@index([customerId], map: "delivery_challans_customerId_idx")
+  @@index([transporterId], map: "delivery_challans_transporterId_idx")
   @@index([deliveryType])
   @@index([direction], map: "delivery_challans_direction_idx")
   @@map("delivery_challans")
@@ -154,8 +154,8 @@ model DeliveryChallanItem {
   gstRate Decimal @default(3.00) @db.Decimal(5,2)
   challan DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
   stockItem StockItem @relation(fields: [stockItemId], references: [id])
-  @@index([challanId], map: "delivery_challan_items_challanId_fkey")
-  @@index([stockItemId], map: "delivery_challan_items_stockItemId_fkey")
+  @@index([challanId], map: "delivery_challan_items_challanId_idx")
+  @@index([stockItemId], map: "delivery_challan_items_stockItemId_idx")
   @@map("delivery_challan_items")
 }
 
@@ -255,7 +255,7 @@ model LogisticsSummary {
   updatedAt DateTime @updatedAt
   items LogisticsSummaryItem[]
   transporter Transporter? @relation(fields: [transporterId], references: [id], onDelete: SetNull)
-  @@index([transporterId], map: "logistics_summary_transporterId_fkey")
+  @@index([transporterId], map: "logistics_summary_transporterId_idx")
   @@index([createdAt])
   @@map("logistics_summaries")
 }
@@ -282,7 +282,7 @@ model LogisticsSummaryItem {
   updatedAt DateTime @updatedAt
   summary LogisticsSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  @@index([summaryId], map: "logistics_summary_items_summaryId_fkey")
+  @@index([summaryId], map: "logistics_summary_items_summaryId_idx")
   @@index([customerId], map: "logistics_summary_items_customerId_idx")
   @@map("logistics_summary_items")
 }
