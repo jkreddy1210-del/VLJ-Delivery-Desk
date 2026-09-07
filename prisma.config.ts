@@ -9,8 +9,8 @@ export default defineConfig({
   },
 
   datasource: {
-    // Use Supabase's direct connection for Prisma CLI/migrations when provided.
-    // Fall back to DATABASE_URL for local development.
-    url: process.env.DIRECT_URL || process.env.DATABASE_URL!,
+    // Delivery Desk uses its own MySQL database (vlj_erp).
+    // Keep the Prisma CLI/migrations connection on DATABASE_URL.
+    url: process.env.DATABASE_URL!,
   },
 });
