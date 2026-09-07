@@ -87,6 +87,8 @@ model Transporter {
   id Int @id @default(autoincrement())
   name String
   mobile String?
+  phone String?
+  email String?
   gstin String?
   vehicleNumber String?
   address String?
@@ -177,7 +179,7 @@ model DeliveryChallanSettlement {
   @@map("delivery_challan_settlements")
 }
 
-enum SettlementType { INVOICE CREDIT_NOTE DEBIT_NOTE }
+enum SettlementType { INVOICE CREDIT_NOTE DEBIT_NOTE RETURN_DC }
 model StockGroup {
   id Int @id @default(autoincrement())
   groupName String @unique(map: "StockGroup_groupName_key") @db.VarChar(150)
@@ -196,7 +198,7 @@ model StockGroup {
 enum Status { ACTIVE INACTIVE }
 enum CustomerType { CUSTOMER VENDOR @@map("customer_type") }
 enum ChallanStatus { STOCK_SENT STOCK_RECEIVED }
-enum MovementDirection { OUTWARD INWARD @@map("movement_direction") }
+enum MovementDirection { INWARD OUTWARD @@map("movement_direction") }
 enum MovementReason { ORIGINAL RETURN REPLACEMENT OTHER }
 enum NoteType { CREDIT DEBIT }
 enum DeliveryType { APPROVAL JOB_WORK MARKETING }
