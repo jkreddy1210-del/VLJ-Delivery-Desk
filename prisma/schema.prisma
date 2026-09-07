@@ -179,7 +179,13 @@ model DeliveryChallanSettlement {
   @@map("delivery_challan_settlements")
 }
 
-enum SettlementType { INVOICE CREDIT_NOTE DEBIT_NOTE RETURN_DC }
+enum SettlementType {
+  INVOICE
+  CREDIT_NOTE
+  DEBIT_NOTE
+  RETURN_DC
+}
+
 model StockGroup {
   id Int @id @default(autoincrement())
   groupName String @unique(map: "StockGroup_groupName_key") @db.VarChar(150)
@@ -195,14 +201,52 @@ model StockGroup {
   @@index([status], map: "StockGroup_status_idx")
   @@map("stockgroup")
 }
-enum Status { ACTIVE INACTIVE }
-enum CustomerType { CUSTOMER VENDOR @@map("customer_type") }
-enum ChallanStatus { STOCK_SENT STOCK_RECEIVED }
-enum MovementDirection { INWARD OUTWARD @@map("movement_direction") }
-enum MovementReason { ORIGINAL RETURN REPLACEMENT OTHER }
-enum NoteType { CREDIT DEBIT }
-enum DeliveryType { APPROVAL JOB_WORK MARKETING }
-enum StockGroupStatus { ACTIVE INACTIVE @@map("stockgroup_status") }
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum CustomerType {
+  CUSTOMER
+  VENDOR
+  @@map("customer_type")
+}
+
+enum ChallanStatus {
+  STOCK_SENT
+  STOCK_RECEIVED
+}
+
+enum MovementDirection {
+  INWARD
+  OUTWARD
+  @@map("movement_direction")
+}
+
+enum MovementReason {
+  ORIGINAL
+  RETURN
+  REPLACEMENT
+  OTHER
+}
+
+enum NoteType {
+  CREDIT
+  DEBIT
+}
+
+enum DeliveryType {
+  APPROVAL
+  JOB_WORK
+  MARKETING
+}
+
+enum StockGroupStatus {
+  ACTIVE
+  INACTIVE
+  @@map("stockgroup_status")
+}
 
 model LogisticsSummary {
   id Int @id @default(autoincrement())
