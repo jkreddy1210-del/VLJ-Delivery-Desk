@@ -177,7 +177,7 @@ model DeliveryChallanSettlement {
   @@map("delivery_challan_settlements")
 }
 
-enum SettlementType { INVOICE CREDIT_NOTE DEBIT_NOTE }
+enum SettlementType { INVOICE CREDIT_NOTE DEBIT_NOTE RETURN_DC }
 model StockGroup {
   id Int @id @default(autoincrement())
   groupName String @unique(map: "StockGroup_groupName_key") @db.VarChar(150)
@@ -277,7 +277,7 @@ model ProductInventory {
   id Int @id @default(autoincrement())
   companyId Int @default(1)
   productId Int @unique
-  totalQtyInHand Decimal @default(0) @db.Decimal(12,3)
+  totalQtyInHand Decimal @default(0) 
   lastMovement DateTime? @updatedAt
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -291,7 +291,7 @@ model CustomerProductStock {
   companyId Int @default(1)
   customerId Int
   productId Int
-  qtyWithCustomer Decimal @default(0) @db.Decimal(12,3)
+  qtyWithCustomer Decimal @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
