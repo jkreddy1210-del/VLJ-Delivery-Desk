@@ -44,7 +44,6 @@ model Customer {
   mobile String?
   phone String?
   email String?
-  website String?
   gstin String?
   addressLine1 String?
   addressLine2 String?
@@ -88,6 +87,8 @@ model Transporter {
   id Int @id @default(autoincrement())
   name String
   mobile String?
+  phone String?
+  email String?
   gstin String?
   vehicleNumber String?
   address String?
@@ -209,7 +210,7 @@ model LogisticsSummary {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   items LogisticsSummaryItem[]
-  transporter Transporter? @relation([fields: [transporterId], references: [id], onDelete: SetNull)
+  transporter Transporter? @relation(fields: [transporterId], references: [id], onDelete: SetNull)
   @@index([transporterId], map: "logistics_summary_transporterId_fkey")
   @@index([createdAt])
   @@map("logistics_summaries")
